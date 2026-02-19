@@ -1,0 +1,74 @@
+
+float citanjeLevogEnkodera(){
+    int32_t leviUgaoRaw = (int32_t)leviEnkoder.getRawAngle();
+    float leviUgao = (leviUgaoRaw * 360.0) / 4096.0;
+    return leviUgao;
+}
+
+float citanjeDesnogEnkodera(){
+    int32_t desniUgaoRaw = (int32_t)desniEnkoder.getRawAngle();
+    float desniUgao = (desniUgaoRaw * 360.0) / 4096.0;
+    return desniUgao;
+}
+
+//racunanje delta uglova izmedju dva merenja
+float deltaLeviUgao(float leviUgao){
+    float deltaLeviUgao = leviUgao - prethodniLeviUgao;
+    prethodniLeviUgao = leviUgao;
+    // normalizacija delta ugla zbog prelaska preko 0/360 stepeni
+    if(deltaLeviUgao > 180.0){
+        deltaLeviUgao -= 360.0;
+    }else if(deltaLeviUgao < -180.0){
+        deltaLeviUgao += 360.0;
+    }
+    return deltaLeviUgao;
+}
+
+float deltaDesniUgao(float desniUgao){
+    float deltaDesniUgao = desniUgao - prethodniDesniUgao;
+    prethodniDesniUgao = desniUgao;
+    // normalizacija delta ugla zbog prelaska preko 0/360 stepeni
+    if(deltaDesniUgao > 180.0){
+        deltaDesniUgao -= 360.0;
+    }else if(deltaDesniUgao < -180.0){
+        deltaDesniUgao += 360.0;
+    }
+    deltaDesniUgao = -deltaDesniUgao; // inverzija smera okretanja desnog tocka
+    return deltaDesniUgao;
+}
+
+//prejdeni putove tockova
+float predjeniLeviPut(float deltaLeviUgao){
+    float leviPut = (0.5 * PRECNIK_TOCKA) * (deltaLeviUgao * (pi / 180.0));
+    return leviPut;
+}
+
+float predjeniDesniPut(float deltaDesniUgao){
+    float desniPut = (0.5 * PRECNIK_TOCKA) * (deltaDesniUgao * (pi / 180.0));
+    return desniPut;
+}
+
+
+//promena polozaja sime
+float promenaX(float leviPut, float desniPut, float theta){
+    float deltaX = ((leviPut + desniPut) / 2.0) * cos(theta);
+    return deltaX;
+}
+
+float promenaY(float leviPut, float desniPut, float theta){
+    float deltaY = ((leviPut + desniPut) / 2.0) * sin(theta);
+    return deltaY;
+}
+
+
+
+
+
+
+
+    float leviUgao = citanjeLevogEnkodera();
+    float desniUgao = citanjeDesnogEnkodera();
+    float deltaLevi = deltaLeviUgao(leviUgao);
+    float deltaDesni = deltaDesniUgao(desniUgao);
+    float leviPut = predjeniLeviPut(deltaLevi);
+    float desniPut = predjeniDesniPut(deltaDesni);
