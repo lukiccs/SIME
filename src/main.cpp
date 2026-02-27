@@ -30,7 +30,7 @@ uint16_t desniRaw0;
 int32_t dLeviRaw0 = 0;
 
 // LPF
-const float alfa = 0.3;
+const float alfa = 0.4;
 float brzinaLevogLPF = 0.0;
 float brzinaDesnogLPF = 0.0;
 
@@ -45,6 +45,18 @@ float desniPut;
 float X = 0.0;
 float Y = 0.0;
 float theta = 0.0;
+
+//PI regulacija
+float integralLevi = 0;
+float integralDesni = 0;
+float KpL = 5.0;
+float KiL = 1.0;
+float KpD = 5.0;
+float KiD = 1.0;
+float pwmLimit = 200;
+float Kvl = 21.2;
+float Kvd = 17.3;
+
 
 Adafruit_AS5600 leviEnkoder;
 Adafruit_AS5600 desniEnkoder;
@@ -158,27 +170,113 @@ float promenaY(float leviPut, float desniPut, float theta){
     return deltaY;
 }
 
+//rad/s u pwm
+float RADS2PWMLevi(float brzinaLevog){
+    float PWMLevi;
+    
+    if(brzinaLevog > 0) PWMLevi = 55 + Kvl * brzinaLevog;//55pwm je minimum sa kojim krece, Kv = 21.2
+    else if(brzinaLevog < 0) PWMLevi = -55 + Kvl * brzinaLevog;
+    else PWMLevi = 0;
+    // if(PWMLevi > pwmLimit) PWMLevi = pwmLimit;
+    // if(PWMLevi < -pwmLimit) PWMLevi = -pwmLimit;
+    
+    return PWMLevi;
+}
 
+//rad/s u pwm
+float RADS2PWMDesni(float brzinaDesnog){
+    float PWMDesni;
+    
+    if(brzinaDesnog > 0) PWMDesni = 55 + Kvd * brzinaDesnog;//55pwm je minimum sa kojim krece, Kv = 21.2
+    else if(brzinaDesnog < 0) PWMDesni = -55 + Kvd * brzinaDesnog;
+    else PWMDesni = 0;
+    // if(PWMDesni > pwmLimit) PWMDesni = pwmLimit;
+    // if(PWMDesni < -pwmLimit) PWMDesni = -pwmLimit;
 
+    return PWMDesni;
+}
 
+//PI regulacija leve strane
+float leviPI(float brzinaLevogZeljena, float brzinaLevogStvarna){
+    //greska
+    float E = brzinaLevogZeljena - brzinaLevogStvarna;
+    //proporcionalni deo
+    float P = KpL * E;
+    //novi integralni
+    float noviIntegral = integralLevi + KiL * E * T;
+    //feedforward deo
+    float FF = brzinaLevogZeljena;
+    //upravljacka velicina
+    float Unsat = RADS2PWMLevi(FF + P + noviIntegral);
+    float Usat = Unsat;
+    if(Usat > pwmLimit) Usat = pwmLimit;
+    if(Usat < -pwmLimit) Usat = -pwmLimit;
+    
+    if(Unsat == Usat){
+        integralLevi = noviIntegral;
+    }
+    return Usat;
+}
 
+//PI regulacija desni strane
+float desniPI(float brzinaDesnogZeljena, float brzinaDesnogStvarna){
+    //greska
+    float E = brzinaDesnogZeljena - brzinaDesnogStvarna;
+    //proporcionalni deo
+    float P = KpD * E;
+    //novi integralni
+    float noviIntegral = integralDesni + KiD * E * T;
+    //feedforward deo
+    float FF = brzinaDesnogZeljena;
+    //upravljacka velicina
+    float Unsat = FF + P + noviIntegral;
+    if(Unsat > 10) Unsat = 10;  // granice brzine, rad/s
+    if(Unsat < -10) Unsat = -10;
+    float Usat = Unsat;
 
+    // if(Usat > pwmLimit) Usat = pwmLimit;
+    // if(Usat < -pwmLimit) Usat = -pwmLimit;
+    
+    if(Unsat == Usat){
+        integralDesni = noviIntegral;
+    }
+    return RADS2PWMDesni(Usat);
+}
 
+//setovanje PWM na motore
+void setLevi(float PWMLevi){
+    if(PWMLevi >= 0){
+        analogWrite(LEVI_MOTOR_PIN1, PWMLevi);
+        digitalWrite(LEVI_MOTOR_PIN2, LOW);
+    }
+    else{
+        analogWrite(LEVI_MOTOR_PIN2, -PWMLevi);
+        digitalWrite(LEVI_MOTOR_PIN1, LOW);
+    }
+}
 
-
+//setovanje PWM na motore
+void setDesni(float PWMDesni){
+    if(PWMDesni >= 0){
+        analogWrite(DESNI_MOTOR_PIN1, PWMDesni);
+        digitalWrite(DESNI_MOTOR_PIN2, LOW);
+    }
+    else{
+        analogWrite(DESNI_MOTOR_PIN2, -PWMDesni);
+        digitalWrite(DESNI_MOTOR_PIN1, LOW);
+    }
+}
 
 
 void setup() {
     Serial.begin(115200);
-    delay(2000);
+    delay(10);
     Serial.print("Radi serial");
 
     // I2C0
     Wire.begin();
-    delay(1000);
     // I2C1
     Wire1.begin();
-    delay(1000);
 
     Serial.println("Pokretanje sistema...");
     Serial.println("Debug...");
@@ -189,13 +287,15 @@ void setup() {
     pinMode(LEVI_MOTOR_PIN2, OUTPUT);
     pinMode(DESNI_MOTOR_PIN1, OUTPUT);
     pinMode(DESNI_MOTOR_PIN2, OUTPUT);
-//     // Motor A napred
-    analogWrite(LEVI_MOTOR_PIN1, 150);  // brzina (0-255)
-    digitalWrite(LEVI_MOTOR_PIN2, LOW);
+// //     // Motor A napred
+//     analogWrite(LEVI_MOTOR_PIN1, 250);  // brzina (0-255)
+//     digitalWrite(LEVI_MOTOR_PIN2, LOW);
 
-  // Motor B napred
-    analogWrite(DESNI_MOTOR_PIN1, 150);
-    digitalWrite(DESNI_MOTOR_PIN2, LOW);
+//   // Motor B napred
+//     digitalWrite(DESNI_MOTOR_PIN2, LOW);
+//     analogWrite(DESNI_MOTOR_PIN1, 250);
+    delay(1000);
+    Serial.println("Gotov Setup");
 }
 
 void loop() {
@@ -203,8 +303,18 @@ void loop() {
     trenutnoVreme = millis();
     if(trenutnoVreme - prethodnoVreme < (T*1000)) return;
 
-    leviPut = (levaStrana()* T)*(0.5*PRECNIK_TOCKA);//rad/sonda mnozim sa T da dobijem rad onda da dobijem luk
-    desniPut = (desnaStrana()* T)*(0.5*PRECNIK_TOCKA);
+    float wL = levaStrana();
+    float wD = desnaStrana();
+    float wZeljeno = 4.0;
+
+    float PWMLevi = leviPI(wZeljeno, wL);
+    float PWMDesni = desniPI(wZeljeno, wD);
+
+    setLevi(PWMLevi);
+    setDesni(PWMDesni);
+
+    leviPut = (wL* T)*(0.5*PRECNIK_TOCKA);//rad/sonda mnozim sa T da dobijem rad onda da dobijem luk
+    desniPut = (wD* T)*(0.5*PRECNIK_TOCKA);
     
     theta += promenaTheta(leviPut, desniPut);
     X += promenaX(leviPut, desniPut, theta);
@@ -227,24 +337,13 @@ void loop() {
     Serial.print(desniEnkoder.getRawAngle());
     // Serial.print("T(ms): ");Serial.println(trenutnoVreme - prethodnoVreme);
     Serial.print(" ");
-    Serial.print(levaStrana());
+    Serial.print(PWMDesni);
     Serial.print(" ");
-    Serial.println(desnaStrana());
-    // Serial.println(leviPut);
-    // Serial.println(desniPut);
-    // Serial.println("//////////////////////////////////////////////////////////");
-    // if(desniEnkoder.isAGCminGainOverflow()){
-    //     Serial.println("Magnet desnog enkodera je previse jak");
-    // }
-    // if(desniEnkoder.isAGCmaxGainOverflow()){
-    //     Serial.println("Magnet desnog enkodera je previse slab");
-    // }
-    // if(leviEnkoder.isAGCminGainOverflow()){
-    //     Serial.println("Magnet levog enkodera je previse jak");
-    // }
-    // if(leviEnkoder.isAGCmaxGainOverflow()){
-    //     Serial.println("Magnet levog enkodera je previse slab");
-    // }
+    Serial.print(wL);
+    Serial.print(" ");
+    Serial.print(PWMDesni);
+    Serial.print(" ");
+    Serial.println(wD);
 
     prethodnoVreme = trenutnoVreme;
 }
