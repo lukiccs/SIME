@@ -49,13 +49,16 @@ float theta = 0.0;
 //PI regulacija
 float integralLevi = 0;
 float integralDesni = 0;
-float KpL = 15.0;
-float KiL = 1.0;
-float KpD = 10.0;
-float KiD = 1.0;
+float KpL = 7.0;
+float KiL = 1;
+float KpD = 7.0;
+float KiD = 1;
 float pwmLimit = 200;
 float Kvl = 20;
 float Kvd = 21;
+
+//trapez brzine
+float brzina = 0;
 
 
 Adafruit_AS5600 leviEnkoder;
@@ -172,30 +175,14 @@ float promenaY(float leviPut, float desniPut, float theta){
     return deltaY;
 }
 
-//rad/s u pwm
-float RADS2PWMLevi(float brzinaLevog){
-    float PWMLevi;
-    // PWMLevi = Kvd * brzinaLevog;
-    if(brzinaLevog > 0) PWMLevi = Kvl * brzinaLevog;//55pwm je minimum sa kojim krece, Kv = 21.2
-    else if(brzinaLevog < 0) PWMLevi = Kvl * brzinaLevog;
-    // else PWMLevi = 0;
-    // if(PWMLevi > pwmLimit) PWMLevi = pwmLimit;
-    // if(PWMLevi < -pwmLimit) PWMLevi = -pwmLimit;
-    
-    return PWMLevi;
-}
-
-//rad/s u pwm
-float RADS2PWMDesni(float brzinaDesnog){
-    float PWMDesni;
-    // PWMDesni = Kvd * brzinaDesnog;
-    if(brzinaDesnog > 0) PWMDesni = Kvd * brzinaDesnog;//55pwm je minimum sa kojim krece, Kv = 21.2
-    else if(brzinaDesnog < 0) PWMDesni = Kvd * brzinaDesnog;
-    // else PWMDesni = 0;
-    // if(PWMDesni > pwmLimit) PWMDesni = pwmLimit;
-    // if(PWMDesni < -pwmLimit) PWMDesni = -pwmLimit;
-
-    return PWMDesni;
+float trapezBrzine(){
+    if(brzina <= 7){
+        brzina += maxACC * T;
+    }
+    else{
+        brzina -= maxACC * T;
+    }
+    return brzina;
 }
 
 //PI regulacija leve strane
@@ -205,14 +192,14 @@ float leviPI(float brzinaLevogZeljena, float brzinaLevogStvarna){
     //proporcionalni deo
     float P = KpL * E;
     //novi integralni
-    float noviIntegral = integralLevi + KiL * E * T;
+    integralLevi += KiL * E * T;
     //feedforward deo
-    float FF = brzinaLevogZeljena * 22.5;
+    float FF = brzinaLevogZeljena * 25.5;
     //upravljacka velicina
-    float U = FF + P * 21.5;
+    float U = FF + (P + integralLevi) * 21.0;
     float Usat = constrain(U, -255.0, 255.0);
     
-    integralLevi = noviIntegral + (Usat - U);//Antiwindup
+    integralLevi += 0.1 * (Usat - U) * T;//Antiwindup
     
     return constrain(U, -255.0, 255.0);
 }
@@ -224,21 +211,17 @@ float desniPI(float brzinaDesnogZeljena, float brzinaDesnogStvarna){
     //proporcionalni deo
     float P = KpD * E;
     //novi integralni
-    float noviIntegral = integralDesni + KiD * E * T;
+    integralDesni += KiD * E * T;
     //feedforward deo
-    float FF = brzinaDesnogZeljena * 22.5; //Kv za FF
+    float FF = brzinaDesnogZeljena * 25.5; //Kv za FF
     //upravljacka velicina
-    float U = FF + P * 21.5;
-    // float Usat = UnsatPWM;
+    // float U = FF + P * 21.0;
+    float U = FF + (P + integralDesni) * 21.0;
+    float Usat = constrain(U, -255.0, 255.0);
     
+    integralDesni += 0.1 * (Usat - U) * T;//Antiwindup
 
-    // if(U > pwmLimit) U = pwmLimit;
-    // if(U < -pwmLimit) U = -pwmLimit;
-    
-    // if(Unsat == Usat){
-    //     integralDesni = noviIntegral;
-    // }
-    return constrain(U, -255.0, 255.0);
+    return Usat;
 }
 
 //setovanje PWM na motore
@@ -297,15 +280,6 @@ void setup() {
     pinMode(LEVI_MOTOR_PIN2, OUTPUT);
     pinMode(DESNI_MOTOR_PIN1, OUTPUT);
     pinMode(DESNI_MOTOR_PIN2, OUTPUT);
-    // setLevi(RADS2PWMLevi(4.0));
-    // setDesni(RADS2PWMDesni(4.0));
-// //     // Motor A napred
-//     analogWrite(LEVI_MOTOR_PIN1, 127);  // brzina (0-255)
-//     digitalWrite(LEVI_MOTOR_PIN2, LOW);
-
-//   // Motor B napred
-//     digitalWrite(DESNI_MOTOR_PIN2, LOW);
-//     analogWrite(DESNI_MOTOR_PIN1, 127);
     delay(1000);
     Serial.println("Gotov Setup");
 }
@@ -318,7 +292,7 @@ void loop() {
     
     float wL = levaStrana();
     float wD = desnaStrana();
-    float wZeljeno = 9.0;
+    float wZeljeno = 8;
     
     float PWMLevi = leviPI(wZeljeno, wL);
     float PWMDesni = desniPI(wZeljeno, wD);
@@ -327,8 +301,6 @@ void loop() {
     
     setLevi(PWMLevi);
     setDesni(PWMDesni);
-    
-    
     
     // leviPut = (wL* T)*(0.5*PRECNIK_TOCKA);//rad/sonda mnozim sa T da dobijem rad onda da dobijem luk
     // desniPut = (wD* T)*(0.5*PRECNIK_TOCKA);
@@ -363,4 +335,5 @@ void loop() {
 
     prethodnoVreme = trenutnoVreme;
     //DODATI float leviPut = (dLeviRaw / 4096.0) * 2*pi * (0.5*PRECNIK_TOCKA); da bih izbegao leviPut = (wL * T) * (0.5 * PRECNIK_TOCKA); da bi odometrija bila stabilnija
+    //<333
 }
