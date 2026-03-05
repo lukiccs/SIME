@@ -175,15 +175,6 @@ float promenaY(float leviPut, float desniPut, float theta){
     return deltaY;
 }
 
-float trapezBrzine(){
-    if(brzina <= 7){
-        brzina += maxACC * T;
-    }
-    else{
-        brzina -= maxACC * T;
-    }
-    return brzina;
-}
 
 //PI regulacija leve strane
 float leviPI(float brzinaLevogZeljena, float brzinaLevogStvarna){
